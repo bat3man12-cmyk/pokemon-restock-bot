@@ -1,0 +1,122 @@
+import os
+import requests
+from bs4 import BeautifulSoup
+from geopy.geocoders import Nominatim
+from geopy.distance import geodesic
+
+# ================= CONFIG =================
+
+DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
+USER_POSTCODE = "DN9"
+MAX_DISTANCE_MILES = 30
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (PokemonRestockChecker/1.0)"
+}
+
+if not DISCORD_WEBHOOK:
+    raise RuntimeError("DISCORD_WEBHOOK missing")
+
+# ================= LOCATION =================
+
+geolocator = Nominatim(user_agent="pokemon_checker")
+location = geolocator.geocode(USER_POSTCODE)
+
+if not location:
+    raise RuntimeError("Postcode lookup failed")
+
+USER_COORD = (location.latitude, location.longitude)
+
+# ================= STORES =================
+# NOTE: Only stores that can be scraped safely
+
+STORES = {
+    # Major Toy / Retail
+    "Smyths Toys": ("https://www.smythstoys.com/uk/en-gb/search/?text=pokemon", (53.552, -1.128)),
+    "The Entertainer": ("https://www.thetoyshop.com/search/?text=pokemon", (53.521, -1.120)),
+    "Argos": ("https://www.argos.co.uk/search/pokemon-trading-cards/", (53.525, -1.130)),
+    "WHSmith": ("https://www.whsmith.co.uk/search?query=pokemon", (53.518, -1.121)),
+
+    # Supermarkets
+    "Tesco": ("https://www.tesco.com/groceries/en-GB/search?query=pokemon", (53.523, -1.125)),
+    "Asda": ("https://groceries.asda.com/search/pokemon", (53.519, -1.122)),
+    "Sainsburys": ("https://www.sainsburys.co.uk/gol-ui/SearchResults/pokemon", (53.518, -1.121)),
+    "Morrisons": ("https://groceries.morrisons.com/search?entry=pokemon", (53.520, -1.127)),
+
+    # Specialists
+    "Forbidden Planet": ("https://forbiddenplanet.com/catalogsearch/result/?q=pokemon", USER_COORD),
+    "Waterstones": ("https://www.waterstones.com/books/search/term/pokemon", USER_COORD),
+    "CEX": ("https://uk.webuy.com/search/?query=pokemon", USER_COORD),
+
+    # Marketplaces
+    "Amazon UK": ("https://www.amazon.co.uk/s?k=pokemon+tcg", USER_COORD),
+    "eBay UK": ("https://www.ebay.co.uk/sch/i.html?_nkw=pokemon+tcg", USER_COORD),
+}
+
+# ================= KEYWORDS =================
+
+SEALED_KEYWORDS = [
+    "booster",
+    "elite trainer box",
+    "etb",
+    "tin",
+    "collection",
+    "blister",
+    "trading card",
+]
+
+IGNORE_KEYWORDS = [
+    "single",
+    "guide",
+    "book",
+    "magazine",
+    "proxy",
+]
+
+# ================= HELPERS =================
+
+def within_distance(coord):
+    return geodesic(USER_COORD, coord).miles <= MAX_DISTANCE_MILES
+
+def is_sealed(name: str) -> bool:
+    name = name.lower()
+    return any(k in name for k in SEALED_KEYWORDS) and not any(i in name for i in IGNORE_KEYWORDS)
+
+def send_discord(message: str):
+    requests.post(DISCORD_WEBHOOK, json={"content": message}, timeout=10)
+
+# ================= MAIN RUN =================
+
+def run():
+    for store, (url, coord) in STORES.items():
+
+        if coord != USER_COORD and not within_distance(coord):
+            continue
+
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=20)
+            soup = BeautifulSoup(r.text, "html.parser")
+
+            items = [
+                t.strip()
+                for t in soup.stripped_strings
+                if "pokemon" in t.lower()
+                and 10 < len(t) < 120
+                and is_sealed(t)
+            ]
+
+            if not items:
+                continue
+
+            message = f"STORE CHECK RESULT: {store}\n\n"
+            for item in items[:10]:
+                message += f"- {item}\n"
+
+            send_discord(message)
+
+        except Exception as e:
+            print(f"{store} failed: {e}")
+
+if __name__ == "__main__":
+    print("Pokemon restock check started")
+    run()
