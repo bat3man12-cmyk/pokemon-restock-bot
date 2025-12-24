@@ -15,7 +15,7 @@ HEADERS = {
 }
 
 if not DISCORD_WEBHOOK:
-    raise RuntimeError("DISCORD_WEBHOOK missing")
+    raise RuntimeError("DISCORD_WEBHOOK environment variable missing")
 
 # ================= LOCATION =================
 
@@ -23,7 +23,7 @@ geolocator = Nominatim(user_agent="pokemon_checker")
 location = geolocator.geocode(USER_POSTCODE)
 
 if not location:
-    raise RuntimeError("Postcode lookup failed")
+    raise RuntimeError("Failed to geocode postcode")
 
 USER_COORD = (location.latitude, location.longitude)
 
@@ -139,4 +139,49 @@ STORES = {
     },
     "Waterstones": {
         "url": "https://www.waterstones.com/books/search/term/pokemon",
-        "coord": USER_C_
+        "coord": USER_COORD,
+        "parser": parse_waterstones,
+    },
+    "CEX": {
+        "url": "https://uk.webuy.com/search/?query=pokemon",
+        "coord": USER_COORD,
+        "parser": parse_cex,
+    },
+    "Amazon UK": {
+        "url": "https://www.amazon.co.uk/s?k=pokemon+tcg",
+        "coord": USER_COORD,
+        "parser": generic_parser,
+    },
+    "eBay UK": {
+        "url": "https://www.ebay.co.uk/sch/i.html?_nkw=pokemon+tcg",
+        "coord": USER_COORD,
+        "parser": generic_parser,
+    },
+}
+
+# ================= MAIN =================
+
+def run():
+    for store, cfg in STORES.items():
+
+        if cfg["coord"] != USER_COORD and not within_distance(cfg["coord"]):
+            continue
+
+        try:
+            items = cfg["parser"](cfg["url"])
+            if not items:
+                continue
+
+            message = f"STORE RESTOCK DETECTED: {store} ({USER_POSTCODE})\n\n"
+            for item in items[:10]:
+                message += f"- {item}\n"
+
+            send_discord(message)
+
+        except Exception as e:
+            print(f"{store} error: {e}")
+
+if __name__ == "__main__":
+    print("Pokemon restock check started")
+    run()
+
