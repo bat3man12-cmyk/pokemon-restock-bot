@@ -182,6 +182,7 @@ def run():
             print(f"{store} error: {e}")
 
 if __name__ == "__main__":
-    print("Pokemon restock check started")
+    send_discord("TEST MESSAGE: GitHub Actions can send Discord messages")
     run()
+
 
