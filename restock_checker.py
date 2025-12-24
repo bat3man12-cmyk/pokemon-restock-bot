@@ -188,7 +188,7 @@ STORES = {
         "coord": USER_COORD,
         "parser": generic_parser,
     },
-}
+})
 
 # ================= MAIN =================
 
