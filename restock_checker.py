@@ -157,6 +157,37 @@ STORES = {
         "coord": USER_COORD,
         "parser": generic_parser,
     },
+    STORES.update({
+    "ASDA": {
+        "url": "https://groceries.asda.com/search/pokemon",
+        "coord": USER_COORD,
+        "parser": generic_parser,
+    },
+    "Tesco": {
+        "url": "https://www.tesco.com/groceries/en-GB/search?query=pokemon",
+        "coord": USER_COORD,
+        "parser": generic_parser,
+    },
+    "Morrisons": {
+        "url": "https://groceries.morrisons.com/search?searchTerm=pokemon",
+        "coord": USER_COORD,
+        "parser": generic_parser,
+    },
+    "Sainsbury's": {
+        "url": "https://www.sainsburys.co.uk/shop/gb/groceries/search?search-term=pokemon",
+        "coord": USER_COORD,
+        "parser": generic_parser,
+    },
+    "Aldi": {
+        "url": "https://www.aldi.co.uk/search?query=pokemon",
+        "coord": USER_COORD,
+        "parser": generic_parser,
+    },
+    "B&M": {
+        "url": "https://www.bmstores.co.uk/brands/pok-mon",
+        "coord": USER_COORD,
+        "parser": generic_parser,
+    },
 }
 
 # ================= MAIN =================
