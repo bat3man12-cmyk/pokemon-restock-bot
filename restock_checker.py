@@ -296,7 +296,7 @@ def run():
             new_products = []
 
             for product in products:
-                unique_id = f"{store}:{product['name']}"
+                unique_id = f"{store}:{product['name']}:{product['link']}"
                 if unique_id not in seen_items:
                     new_products.append(product)
                     updated_seen.add(unique_id)
@@ -323,8 +323,8 @@ def run():
 
 
 if __name__ == "__main__":
-    send_discord("TEST MESSAGE: GitHub Actions can send Discord messages")
     run()
+
 
 
 
