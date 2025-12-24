@@ -69,59 +69,74 @@ def get_soup(url):
 
 def parse_smyths(url):
     soup = get_soup(url)
-    return [
-        p.get_text(strip=True)
-        for p in soup.select("h2.product-name")
-        if is_sealed(p.get_text())
-    ]
+    return [p.text.strip() for p in soup.select("h2.product-name") if is_sealed(p.text)]
 
 def parse_entertainer(url):
     soup = get_soup(url)
-    return [
-        p.get_text(strip=True)
-        for p in soup.select("a.product-name")
-        if is_sealed(p.get_text())
-    ]
+    return [p.text.strip() for p in soup.select("a.product-name") if is_sealed(p.text)]
 
 def parse_argos(url):
     soup = get_soup(url)
     return [
-        p.get_text(strip=True)
+        p.text.strip()
         for p in soup.select("div[data-test='component-product-card-title']")
-        if is_sealed(p.get_text())
+        if is_sealed(p.text)
     ]
 
 def parse_whsmith(url):
     soup = get_soup(url)
-    return [
-        p.get_text(strip=True)
-        for p in soup.select("h3")
-        if is_sealed(p.get_text())
-    ]
+    return [p.text.strip() for p in soup.select("h3") if is_sealed(p.text)]
 
 def parse_forbidden_planet(url):
     soup = get_soup(url)
-    return [
-        p.get_text(strip=True)
-        for p in soup.select("h3.product-title")
-        if is_sealed(p.get_text())
-    ]
+    return [p.text.strip() for p in soup.select("h3.product-title") if is_sealed(p.text)]
 
 def parse_waterstones(url):
     soup = get_soup(url)
-    return [
-        p.get_text(strip=True)
-        for p in soup.select("a.title")
-        if is_sealed(p.get_text())
-    ]
+    return [p.text.strip() for p in soup.select("a.title") if is_sealed(p.text)]
 
 def parse_cex(url):
     soup = get_soup(url)
-    return [
-        p.get_text(strip=True)
-        for p in soup.select("h3")
-        if is_sealed(p.get_text())
-    ]
+    return [p.text.strip() for p in soup.select("h3") if is_sealed(p.text)]
 
 def generic_parser(url):
-    soup = get_soup(_
+    soup = get_soup(url)
+    return [
+        t.strip()
+        for t in soup.stripped_strings
+        if "pokemon" in t.lower()
+        and 10 < len(t) < 120
+        and is_sealed(t)
+    ]
+
+# ================= STORES =================
+
+STORES = {
+    "Smyths Toys": {
+        "url": "https://www.smythstoys.com/uk/en-gb/search/?text=pokemon",
+        "coord": (53.552, -1.128),
+        "parser": parse_smyths,
+    },
+    "The Entertainer": {
+        "url": "https://www.thetoyshop.com/search/?text=pokemon",
+        "coord": (53.521, -1.120),
+        "parser": parse_entertainer,
+    },
+    "Argos": {
+        "url": "https://www.argos.co.uk/search/pokemon-trading-cards/",
+        "coord": (53.525, -1.130),
+        "parser": parse_argos,
+    },
+    "WHSmith": {
+        "url": "https://www.whsmith.co.uk/search?query=pokemon",
+        "coord": (53.518, -1.121),
+        "parser": parse_whsmith,
+    },
+    "Forbidden Planet": {
+        "url": "https://forbiddenplanet.com/catalogsearch/result/?q=pokemon",
+        "coord": USER_COORD,
+        "parser": parse_forbidden_planet,
+    },
+    "Waterstones": {
+        "url": "https://www.waterstones.com/books/search/term/pokemon",
+        "coord": USER_C_
