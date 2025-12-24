@@ -50,6 +50,8 @@ IGNORE_KEYWORDS = [
 
 # ================= HELPERS =================
 
+# ================= HELPERS =================
+
 def is_sealed(name: str) -> bool:
     name = name.lower()
     return any(k in name for k in SEALED_KEYWORDS) and not any(
@@ -65,6 +67,18 @@ def send_discord(message: str):
 def get_soup(url):
     r = requests.get(url, headers=HEADERS, timeout=20)
     return BeautifulSoup(r.text, "html.parser")
+
+def load_seen_items():
+    if not os.path.exists(SEEN_FILE):
+        return set()
+    with open(SEEN_FILE, "r", encoding="utf-8") as f:
+        return set(line.strip() for line in f)
+
+def save_seen_items(seen_items):
+    with open(SEEN_FILE, "w", encoding="utf-8") as f:
+        for item in sorted(seen_items):
+            f.write(item + "\n")
+
 
 # ============DEDUPLICATION ===============
     def load_seen_items():
