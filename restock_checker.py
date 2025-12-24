@@ -86,20 +86,74 @@ def save_seen_items(seen_items):
 
 def parse_smyths(url):
     soup = get_soup(url)
-    return [p.text.strip() for p in soup.select("h2.product-name") if is_sealed(p.text)]
+    products = []
+
+    for tile in soup.select("div.product-tile"):
+        name_el = tile.select_one("h2.product-name")
+        price_el = tile.select_one("span.price")
+        link_el = tile.select_one("a")
+
+        if not name_el or not link_el:
+            continue
+
+        name = name_el.text.strip()
+        if not is_sealed(name):
+            continue
+
+        products.append({
+            "name": name,
+            "price": price_el.text.strip() if price_el else "Price unavailable",
+            "link": "https://www.smythstoys.com" + link_el["href"]
+        })
+
+    return products
 
 def parse_entertainer(url):
     soup = get_soup(url)
-    return [p.text.strip() for p in soup.select("a.product-name") if is_sealed(p.text)]
+    products = []
+
+    for item in soup.select("div.product-item"):
+        name_el = item.select_one("a.product-name")
+        price_el = item.select_one("span.value")
+
+        if not name_el:
+            continue
+
+        name = name_el.text.strip()
+        if not is_sealed(name):
+            continue
+
+        products.append({
+            "name": name,
+            "price": price_el.text.strip() if price_el else "Price unavailable",
+            "link": "https://www.thetoyshop.com" + name_el["href"]
+        })
+
+    return products
 
 def parse_argos(url):
     soup = get_soup(url)
-    return [
-        p.text.strip()
-        for p in soup.select("div[data-test='component-product-card-title']")
-        if is_sealed(p.text)
-    ]
+    products = []
 
+    for card in soup.select("div[data-test='component-product-card']"):
+        name_el = card.select_one("div[data-test='component-product-card-title']")
+        price_el = card.select_one("li[data-test='component-price']")
+        link_el = card.select_one("a")
+
+        if not name_el or not link_el:
+            continue
+
+        name = name_el.text.strip()
+        if not is_sealed(name):
+            continue
+
+        products.append({
+            "name": name,
+            "price": price_el.text.strip() if price_el else "Price unavailable",
+            "link": "https://www.argos.co.uk" + link_el["href"]
+        })
+
+    return products
 def parse_whsmith(url):
     soup = get_soup(url)
     return [p.text.strip() for p in soup.select("h3") if is_sealed(p.text)]
@@ -118,13 +172,33 @@ def parse_cex(url):
 
 def generic_parser(url):
     soup = get_soup(url)
-    return [
-        t.strip()
-        for t in soup.stripped_strings
-        if "pokemon" in t.lower()
-        and 10 < len(t) < 120
-        and is_sealed(t)
-    ]
+    products = []
+
+    for a in soup.select("a"):
+        text = a.get_text(strip=True)
+        href = a.get("href")
+
+        if not text or not href:
+            continue
+
+        if "pokemon" not in text.lower():
+            continue
+
+        if not is_sealed(text):
+            continue
+
+        if len(text) < 10 or len(text) > 120:
+            continue
+
+        link = href if href.startswith("http") else url
+
+        products.append({
+            "name": text,
+            "price": "Check website",
+            "link": link
+        })
+
+    return products
 
 # ================= STORES =================
 
@@ -214,29 +288,38 @@ def run():
 
     for store, cfg in STORES.items():
 
-        if cfg["coord"] != USER_COORD and not within_distance(cfg["coord"]):
-            continue
-
         try:
-            items = cfg["parser"](cfg["url"])
-            if not items:
+            products = cfg["parser"](cfg["url"])
+            if not products:
                 continue
 
-            new_items = [item for item in items if item not in seen_items]
-            if not new_items:
+            new_products = []
+
+            for product in products:
+                unique_id = f"{store}:{product['name']}"
+                if unique_id not in seen_items:
+                    new_products.append(product)
+                    updated_seen.add(unique_id)
+
+            if not new_products:
                 continue
 
             message = f"POKEMON RESTOCK: {store} ({USER_POSTCODE})\n\n"
-            for item in new_items[:10]:
-                message += f"- {item}\n"
-                updated_seen.add(item)
+
+            for product in new_products[:10]:
+                message += (
+                    f"- {product['name']}\n"
+                    f"  Price: {product['price']}\n"
+                    f"  Link: {product['link']}\n\n"
+                )
 
             send_discord(message)
 
         except Exception as e:
             print(f"{store} error: {e}")
 
-    save_seen_items(updated_seen)  # ✅ MUST be inside run()
+    save_seen_items(updated_seen)
+
 
 
 if __name__ == "__main__":
