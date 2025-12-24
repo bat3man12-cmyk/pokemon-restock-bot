@@ -131,26 +131,38 @@ def parse_entertainer(url):
 
     return products
 
-def parse_argos(url):
+def parse_onestop(url):
     soup = get_soup(url)
     products = []
 
-    for card in soup.select("div[data-test='component-product-card']"):
-        name_el = card.select_one("div[data-test='component-product-card-title']")
-        price_el = card.select_one("li[data-test='component-price']")
-        link_el = card.select_one("a")
+    for item in soup.select("a"):
+        name = item.get_text(strip=True)
+        link = item.get("href")
 
-        if not name_el or not link_el:
+        if not name or not link:
             continue
 
-        name = name_el.text.strip()
+        if "pokemon" not in name.lower():
+            continue
+
         if not is_sealed(name):
             continue
 
+        price = "Check local store"
+
+        # Try to find a nearby price element (if present)
+        parent = item.parent
+        if parent:
+            price_el = parent.find(text=lambda t: t and "£" in t)
+            if price_el:
+                price = price_el.strip()
+
+        full_link = link if link.startswith("http") else "https://www.onestop.co.uk" + link
+
         products.append({
             "name": name,
-            "price": price_el.text.strip() if price_el else "Price unavailable",
-            "link": "https://www.argos.co.uk" + link_el["href"]
+            "price": price,
+            "link": full_link
         })
 
     return products
@@ -213,11 +225,11 @@ STORES = {
         "coord": (53.521, -1.120),
         "parser": parse_entertainer,
     },
-    "Argos": {
-        "url": "https://www.argos.co.uk/search/pokemon-trading-cards/",
-        "coord": (53.525, -1.130),
-        "parser": parse_argos,
-    },
+    "One Stop": {
+    "url": "https://www.onestop.co.uk/search?query=pokemon",
+    "coord": USER_COORD,
+    "parser": parse_onestop,
+},
     "WHSmith": {
         "url": "https://www.whsmith.co.uk/search?query=pokemon",
         "coord": (53.518, -1.121),
