@@ -9,6 +9,7 @@ from geopy.distance import geodesic
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 USER_POSTCODE = "DN9"
 MAX_DISTANCE_MILES = 30
+SEEN_FILES = "seen_items.txt"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (PokemonRestockChecker/1.0)"
@@ -64,6 +65,19 @@ def send_discord(message: str):
 def get_soup(url):
     r = requests.get(url, headers=HEADERS, timeout=20)
     return BeautifulSoup(r.text, "html.parser")
+
+# ============DEDUPLICATION ===============
+    def load_seen_items():
+    if not os.path.exists(SEEN_FILE):
+        return set()
+    with open(SEEN_FILE, "r", encoding="utf-8") as f:
+        return set(line.strip() for line in f)
+
+def save_seen_items(seen_items):
+    with open(SEEN_FILE, "w", encoding="utf-8") as f:
+        for item in sorted(seen_items):
+            f.write(item + "\n")
+
 
 # ================= PER-STORE PARSERS =================
 
