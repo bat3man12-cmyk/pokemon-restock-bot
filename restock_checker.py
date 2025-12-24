@@ -9,7 +9,7 @@ from geopy.distance import geodesic
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 USER_POSTCODE = "DN9"
 MAX_DISTANCE_MILES = 30
-SEEN_FILES = "seen_items.txt"
+SEEN_FILE = "seen_items.txt"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (PokemonRestockChecker/1.0)"
