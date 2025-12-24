@@ -2,7 +2,7 @@ name: Pokemon Restock Checker
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: '*/30 * * * *'  # every 30 minutes
   workflow_dispatch:
 
 jobs:
