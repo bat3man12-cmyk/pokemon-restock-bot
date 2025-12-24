@@ -236,7 +236,7 @@ def run():
         except Exception as e:
             print(f"{store} error: {e}")
 
-save_unseen_items(updated_seen)
+save_seen_items(updated_seen)
 
 if __name__ == "__main__":
     send_discord("TEST MESSAGE: GitHub Actions can send Discord messages")
