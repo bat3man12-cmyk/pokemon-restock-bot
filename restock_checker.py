@@ -157,7 +157,6 @@ STORES = {
         "coord": USER_COORD,
         "parser": generic_parser,
     },
-    STORES.update({
     "ASDA": {
         "url": "https://groceries.asda.com/search/pokemon",
         "coord": USER_COORD,
