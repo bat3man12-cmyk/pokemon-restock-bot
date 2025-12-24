@@ -219,14 +219,21 @@ def run():
             if not items:
                 continue
 
+            new_items = [item for item in items if item not in seen_items]
+            if not new_items:
+                continue
+                
             message = f"STORE RESTOCK DETECTED: {store} ({USER_POSTCODE})\n\n"
-            for item in items[:10]:
+            for item in new_items[:10]:
                 message += f"- {item}\n"
+                updated_seen.add(item)
 
             send_discord(message)
 
         except Exception as e:
             print(f"{store} error: {e}")
+
+save_unseen_items(updated_seen)
 
 if __name__ == "__main__":
     send_discord("TEST MESSAGE: GitHub Actions can send Discord messages")
