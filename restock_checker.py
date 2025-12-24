@@ -211,7 +211,7 @@ STORES = {
 def run():
     seen_items = load_seen_items()
     updated_seen = set(seen_items)
-    
+
     for store, cfg in STORES.items():
 
         if cfg["coord"] != USER_COORD and not within_distance(cfg["coord"]):
@@ -225,8 +225,8 @@ def run():
             new_items = [item for item in items if item not in seen_items]
             if not new_items:
                 continue
-                
-            message = f"STORE RESTOCK DETECTED: {store} ({USER_POSTCODE})\n\n"
+
+            message = f"POKEMON RESTOCK: {store} ({USER_POSTCODE})\n\n"
             for item in new_items[:10]:
                 message += f"- {item}\n"
                 updated_seen.add(item)
@@ -236,7 +236,8 @@ def run():
         except Exception as e:
             print(f"{store} error: {e}")
 
-save_seen_items(updated_seen)
+    save_seen_items(updated_seen)  # ✅ MUST be inside run()
+
 
 if __name__ == "__main__":
     send_discord("TEST MESSAGE: GitHub Actions can send Discord messages")
