@@ -206,6 +206,9 @@ STORES = {
 # ================= MAIN =================
 
 def run():
+    seen_items = load_seen_items()
+    updated_seen = set(seen_items)
+    
     for store, cfg in STORES.items():
 
         if cfg["coord"] != USER_COORD and not within_distance(cfg["coord"]):
