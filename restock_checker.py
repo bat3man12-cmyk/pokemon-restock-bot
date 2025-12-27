@@ -26,13 +26,33 @@ HEADERS = {
 # ================= KEYWORDS =================
 
 SEALED_KEYWORDS = [
-    "booster", "elite trainer box", "etb",
-    "tin", "collection", "blister", "trading card"
+    "booster", "elite trainer box", "etb", "tin",
+    "collection", "blister", "trading card",
 ]
 
 IGNORE_KEYWORDS = [
-    "single", "guide", "book", "magazine", "proxy"
+    "single", "guide", "book", "magazine", "proxy",
 ]
+
+# ================= STORE COLORS =================
+
+STORE_COLORS = {
+    "Smyths Toys": 0x1E90FF,
+    "The Entertainer": 0x32CD32,
+    "One Stop": 0xFFD700,
+    "WHSmith": 0x8A2BE2,
+    "Forbidden Planet": 0xFF4500,
+    "Waterstones": 0x00CED1,
+    "CEX": 0xFF69B4,
+    "Amazon UK": 0xFF9900,
+    "eBay UK": 0xE53238,
+    "ASDA": 0x006400,
+    "Tesco": 0x0051BA,
+    "Morrisons": 0xFFD700,
+    "Sainsbury's": 0xFFA500,
+    "Aldi": 0x003087,
+    "B&M": 0xFF0000,
+}
 
 # ================= HELPERS =================
 
@@ -54,13 +74,13 @@ def mark_discord_sent():
     with open(LAST_SENT_FILE, "w") as f:
         f.write(str(time.time()))
 
-def send_discord(message: str):
+def send_discord_embeds(embeds: list):
     if not can_send_discord():
         return
-    requests.post(DISCORD_WEBHOOK, json={"content": message}, timeout=10)
+    payload = {"embeds": embeds}
+    requests.post(DISCORD_WEBHOOK, json=payload, timeout=10)
     mark_discord_sent()
 
-# Reuse session for speed
 SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
 
@@ -82,11 +102,7 @@ def save_seen_items(items):
 
 def looks_in_stock(text):
     t = text.lower()
-    return not any(x in t for x in [
-        "out of stock", "sold out", "unavailable", "no longer available"
-    ])
-
-# ================= SAFE PARSER =================
+    return not any(x in t for x in ["out of stock", "sold out", "unavailable", "no longer available"])
 
 def safe_parse(parser, url):
     try:
@@ -95,14 +111,134 @@ def safe_parse(parser, url):
         print(f"Parser error ({url}): {e}")
         return []
 
+# ================= PRODUCT EMOJI =================
+
+def product_emoji(name: str) -> str:
+    name = name.lower()
+    if "booster" in name:
+        return "🎴"
+    elif "elite trainer box" in name or "etb" in name:
+        return "📦"
+    elif "tin" in name or "collection" in name:
+        return "🛍️"
+    elif "blister" in name or "trading card" in name:
+        return "🃏"
+    else:
+        return "✨"
+
 # ================= PARSERS =================
-# (Same as your previous code; each parser uses get_soup)
-# parse_smyths, parse_entertainer, parse_onestop, parse_whsmith, 
-# parse_forbidden_planet, parse_waterstones, parse_cex, generic_parser
+
+def parse_smyths(url):
+    soup = get_soup(url)
+    products = []
+    for tile in soup.select("div.product-tile"):
+        name_el = tile.select_one("h2.product-name")
+        price_el = tile.select_one("span.price")
+        link_el = tile.select_one("a")
+        if not name_el or not link_el:
+            continue
+        name = name_el.text.strip()
+        if not is_sealed(name):
+            continue
+        products.append({
+            "name": name,
+            "price": price_el.text.strip() if price_el else "Price unavailable",
+            "link": "https://www.smythstoys.com" + link_el["href"]
+        })
+    return products
+
+def parse_entertainer(url):
+    soup = get_soup(url)
+    products = []
+    for item in soup.select("div.product-item"):
+        name_el = item.select_one("a.product-name")
+        price_el = item.select_one("span.value")
+        if not name_el:
+            continue
+        name = name_el.text.strip()
+        if not is_sealed(name):
+            continue
+        products.append({
+            "name": name,
+            "price": price_el.text.strip() if price_el else "Price unavailable",
+            "link": "https://www.thetoyshop.com" + name_el["href"]
+        })
+    return products
+
+def parse_onestop(url):
+    soup = get_soup(url)
+    products = []
+    for item in soup.select("a"):
+        name = item.get_text(strip=True)
+        link = item.get("href")
+        if not name or not link or "pokemon" not in name.lower() or not is_sealed(name):
+            continue
+        price = "Check local store"
+        parent = item.parent
+        if parent:
+            price_el = parent.find(text=lambda t: t and "£" in t)
+            if price_el:
+                price = price_el.strip()
+        full_link = link if link.startswith("http") else "https://www.onestop.co.uk" + link
+        products.append({"name": name, "price": price, "link": full_link})
+    return products
+
+def parse_whsmith(url):
+    soup = get_soup(url)
+    products = []
+    for p in soup.select("h3"):
+        name = p.text.strip()
+        if not is_sealed(name):
+            continue
+        products.append({"name": name, "price": "Check website", "link": url})
+    return products
+
+def parse_forbidden_planet(url):
+    soup = get_soup(url)
+    products = []
+    for p in soup.select("h3.product-title"):
+        name = p.text.strip()
+        if not is_sealed(name):
+            continue
+        products.append({"name": name, "price": "Check website", "link": url})
+    return products
+
+def parse_waterstones(url):
+    soup = get_soup(url)
+    products = []
+    for a in soup.select("a.title"):
+        name = a.text.strip()
+        if not is_sealed(name):
+            continue
+        link = a.get("href") or url
+        full_link = link if link.startswith("http") else "https://www.waterstones.com" + link
+        products.append({"name": name, "price": "Check website", "link": full_link})
+    return products
+
+def parse_cex(url):
+    soup = get_soup(url)
+    products = []
+    for p in soup.select("h3"):
+        name = p.text.strip()
+        if not is_sealed(name):
+            continue
+        products.append({"name": name, "price": "Check website", "link": url})
+    return products
+
+def generic_parser(url):
+    soup = get_soup(url)
+    products = []
+    for a in soup.select("a"):
+        name = a.get_text(strip=True)
+        href = a.get("href") or url
+        if not name or "pokemon" not in name.lower() or not is_sealed(name):
+            continue
+        full_link = href if href.startswith("http") else url
+        products.append({"name": name, "price": "Check website", "link": full_link})
+    return products
 
 # ================= STORES =================
-# Use per-store radius for physical stores
-# Online stores: "online": True, skip radius check
+
 STORES = {
     "Smyths Toys": {"url": "https://www.smythstoys.com/uk/en-gb/search/?text=pokemon", "coord": (53.552, -1.128), "radius": 25, "parser": parse_smyths, "online": False},
     "The Entertainer": {"url": "https://www.thetoyshop.com/search/?text=pokemon", "coord": (53.521, -1.120), "radius": 30, "parser": parse_entertainer, "online": False},
@@ -153,10 +289,34 @@ def run():
             notifications.append((store, product))
 
     if notifications:
-        message = f"POKEMON RESTOCK ({USER_LOCATION_LABEL})\n\n"
-        for store, p in notifications[:20]:  # Show up to 20 items per message
-            message += f"{store}: {p['name']} ({p['price']})\n{p['link']}\n\n"
-        send_discord(message)
+        store_map = {}
+        for store, p in notifications[:50]:
+            emoji = product_emoji(p['name'])
+            info = f"{emoji} {p['name']}\nPrice: `{p['price']}`\n[Link]({p['link']})"
+            store_map.setdefault(store, []).append(info)
+
+        embeds = []
+
+        # Summary embed
+        embeds.append({
+            "title": f"⚡ POKEMON RESTOCK ALERT! ⚡",
+            "description": f"📍 Location: {USER_LOCATION_LABEL}\n🆕 Total new items: **{len(notifications)}**",
+            "color": 0xFF4500,
+            "footer": {"text": "Check stores quickly, restocks go fast!"}
+        })
+
+        # Per-store embeds (only stores with new items)
+        for store, items in store_map.items():
+            if not items:
+                continue
+            embeds.append({
+                "title": f"{store} Restock ({len(items)} new items)",
+                "description": "\n\n".join(items),
+                "color": STORE_COLORS.get(store, 0xFF0000),
+                "footer": {"text": f"📍 Location: {USER_LOCATION_LABEL} - Check stores quickly!"}
+            })
+
+        send_discord_embeds(embeds)
 
     save_seen_items(updated_seen)
 
