@@ -1,32 +1,26 @@
 import os
+import time
 import requests
 from bs4 import BeautifulSoup
-from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 
 # ================= CONFIG =================
 
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
-USER_POSTCODE = "DN9"
-MAX_DISTANCE_MILES = 30
+if not DISCORD_WEBHOOK:
+    raise RuntimeError("DISCORD_WEBHOOK environment variable missing")
+
+USER_COORD = (53.494, -0.934)  # DN9
+USER_LOCATION_LABEL = "DN9"
+
+DEFAULT_RADIUS_MILES = 30
 SEEN_FILE = "seen_items.txt"
+DISCORD_COOLDOWN_SECONDS = 1800  # 30 mins
+LAST_SENT_FILE = "last_sent.txt"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (PokemonRestockChecker/1.0)"
 }
-
-if not DISCORD_WEBHOOK:
-    raise RuntimeError("DISCORD_WEBHOOK environment variable missing")
-
-# ================= LOCATION =================
-
-geolocator = Nominatim(user_agent="pokemon_checker")
-location = geolocator.geocode(USER_POSTCODE)
-
-if not location:
-    raise RuntimeError("Failed to geocode postcode")
-
-USER_COORD = (location.latitude, location.longitude)
 
 # ================= KEYWORDS =================
 
@@ -51,19 +45,32 @@ IGNORE_KEYWORDS = [
 # ================= HELPERS =================
 
 def is_sealed(name: str) -> bool:
-    name = name.lower()
-    return any(k in name for k in SEALED_KEYWORDS) and not any(
-        i in name for i in IGNORE_KEYWORDS
-    )
+    n = name.lower()
+    return any(k in n for k in SEALED_KEYWORDS) and not any(i in n for i in IGNORE_KEYWORDS)
 
-def within_distance(coord):
-    return geodesic(USER_COORD, coord).miles <= MAX_DISTANCE_MILES
+def within_distance(store_coord, radius):
+    return geodesic(USER_COORD, store_coord).miles <= radius
+
+def can_send_discord():
+    if not os.path.exists(LAST_SENT_FILE):
+        return True
+    with open(LAST_SENT_FILE, "r") as f:
+        last = float(f.read().strip())
+    return (time.time() - last) >= DISCORD_COOLDOWN_SECONDS
+
+def mark_discord_sent():
+    with open(LAST_SENT_FILE, "w") as f:
+        f.write(str(time.time()))
 
 def send_discord(message: str):
+    if not can_send_discord():
+        return
     requests.post(DISCORD_WEBHOOK, json={"content": message}, timeout=10)
+    mark_discord_sent()
 
 def get_soup(url):
     r = requests.get(url, headers=HEADERS, timeout=20)
+    r.raise_for_status()
     return BeautifulSoup(r.text, "html.parser")
 
 def load_seen_items():
@@ -72,225 +79,121 @@ def load_seen_items():
     with open(SEEN_FILE, "r", encoding="utf-8") as f:
         return set(line.strip() for line in f)
 
-def save_seen_items(seen_items):
+def save_seen_items(items):
     with open(SEEN_FILE, "w", encoding="utf-8") as f:
-        for item in sorted(seen_items):
-            f.write(item + "\n")
+        for i in sorted(items):
+            f.write(i + "\n")
 
 def looks_in_stock(text):
-    text = text.lower()
-    return not any(x in text for x in [
+    t = text.lower()
+    return not any(x in t for x in [
         "out of stock",
         "sold out",
         "unavailable",
         "no longer available"
     ])
 
-# ================= PER-STORE PARSERS =================
+# ================= PARSERS (FAIL-SAFE) =================
 
-def parse_smyths(url):
-    soup = get_soup(url)
-    products = []
-    for tile in soup.select("div.product-tile"):
-        name_el = tile.select_one("h2.product-name")
-        price_el = tile.select_one("span.price")
-        link_el = tile.select_one("a")
-        if not name_el or not link_el:
-            continue
-        name = name_el.text.strip()
-        if not is_sealed(name):
-            continue
-        products.append({
-            "name": name,
-            "price": price_el.text.strip() if price_el else "Price unavailable",
-            "link": "https://www.smythstoys.com" + link_el["href"]
-        })
-    return products
-
-def parse_entertainer(url):
-    soup = get_soup(url)
-    products = []
-    for item in soup.select("div.product-item"):
-        name_el = item.select_one("a.product-name")
-        price_el = item.select_one("span.value")
-        if not name_el:
-            continue
-        name = name_el.text.strip()
-        if not is_sealed(name):
-            continue
-        products.append({
-            "name": name,
-            "price": price_el.text.strip() if price_el else "Price unavailable",
-            "link": "https://www.thetoyshop.com" + name_el["href"]
-        })
-    return products
-
-def parse_onestop(url):
-    soup = get_soup(url)
-    products = []
-    for item in soup.select("a"):
-        name = item.get_text(strip=True)
-        link = item.get("href")
-        if not name or not link:
-            continue
-        if "pokemon" not in name.lower():
-            continue
-        if not is_sealed(name):
-            continue
-        price = "Check local store"
-        parent = item.parent
-        if parent:
-            price_el = parent.find(text=lambda t: t and "£" in t)
-            if price_el:
-                price = price_el.strip()
-        full_link = link if link.startswith("http") else "https://www.onestop.co.uk" + link
-        products.append({
-            "name": name,
-            "price": price,
-            "link": full_link
-        })
-    return products
-
-def parse_whsmith(url):
-    soup = get_soup(url)
-    products = []
-    for p in soup.select("h3"):
-        name = p.text.strip()
-        if not is_sealed(name):
-            continue
-        products.append({
-            "name": name,
-            "price": "Check website",
-            "link": url
-        })
-    return products
-
-def parse_forbidden_planet(url):
-    soup = get_soup(url)
-    products = []
-    for p in soup.select("h3.product-title"):
-        name = p.text.strip()
-        if not is_sealed(name):
-            continue
-        products.append({
-            "name": name,
-            "price": "Check website",
-            "link": url
-        })
-    return products
-
-def parse_waterstones(url):
-    soup = get_soup(url)
-    products = []
-    for a in soup.select("a.title"):
-        name = a.text.strip()
-        if not is_sealed(name):
-            continue
-        link = a.get("href") or url
-        full_link = link if link.startswith("http") else "https://www.waterstones.com" + link
-        products.append({
-            "name": name,
-            "price": "Check website",
-            "link": full_link
-        })
-    return products
-
-def parse_cex(url):
-    soup = get_soup(url)
-    products = []
-    for p in soup.select("h3"):
-        name = p.text.strip()
-        if not is_sealed(name):
-            continue
-        products.append({
-            "name": name,
-            "price": "Check website",
-            "link": url
-        })
-    return products
+def safe_parse(parser, url):
+    try:
+        return parser(url)
+    except Exception as e:
+        print(f"Parser error ({url}): {e}")
+        return []
 
 def generic_parser(url):
     soup = get_soup(url)
     products = []
     for a in soup.select("a"):
         name = a.get_text(strip=True)
-        href = a.get("href") or url
-        if not name or "pokemon" not in name.lower() or not is_sealed(name):
+        if not name or "pokemon" not in name.lower():
             continue
-        full_link = href if href.startswith("http") else url
+        if not is_sealed(name):
+            continue
+        link = a.get("href") or url
+        full = link if link.startswith("http") else url
         products.append({
             "name": name,
             "price": "Check website",
-            "link": full_link
+            "link": full
         })
     return products
 
 # ================= STORES =================
 
 STORES = {
-    "Smyths Toys": {"url": "https://www.smythstoys.com/uk/en-gb/search/?text=pokemon", "coord": (53.552, -1.128), "parser": parse_smyths},
-    "The Entertainer": {"url": "https://www.thetoyshop.com/search/?text=pokemon", "coord": (53.521, -1.120), "parser": parse_entertainer},
-    "One Stop": {"url": "https://www.onestop.co.uk/search?query=pokemon", "coord": USER_COORD, "parser": parse_onestop},
-    "WHSmith": {"url": "https://www.whsmith.co.uk/search?query=pokemon", "coord": (53.518, -1.121), "parser": parse_whsmith},
-    "Forbidden Planet": {"url": "https://forbiddenplanet.com/catalogsearch/result/?q=pokemon", "coord": USER_COORD, "parser": parse_forbidden_planet},
-    "Waterstones": {"url": "https://www.waterstones.com/books/search/term/pokemon", "coord": USER_COORD, "parser": parse_waterstones},
-    "CEX": {"url": "https://uk.webuy.com/search/?query=pokemon", "coord": USER_COORD, "parser": parse_cex},
-    "Amazon UK": {"url": "https://www.amazon.co.uk/s?k=pokemon+tcg", "coord": USER_COORD, "parser": generic_parser},
-    "eBay UK": {"url": "https://www.ebay.co.uk/sch/i.html?_nkw=pokemon+tcg", "coord": USER_COORD, "parser": generic_parser},
-    "ASDA": {"url": "https://groceries.asda.com/search/pokemon", "coord": USER_COORD, "parser": generic_parser},
-    "Tesco": {"url": "https://www.tesco.com/groceries/en-GB/search?query=pokemon", "coord": USER_COORD, "parser": generic_parser},
-    "Morrisons": {"url": "https://groceries.morrisons.com/search?searchTerm=pokemon", "coord": USER_COORD, "parser": generic_parser},
-    "Sainsbury's": {"url": "https://www.sainsburys.co.uk/shop/gb/groceries/search?search-term=pokemon", "coord": USER_COORD, "parser": generic_parser},
-    "Aldi": {"url": "https://www.aldi.co.uk/search?query=pokemon", "coord": USER_COORD, "parser": generic_parser},
-    "B&M": {"url": "https://www.bmstores.co.uk/brands/pok-mon", "coord": USER_COORD, "parser": generic_parser},
+    # Physical stores
+    "Smyths Toys": {
+        "url": "https://www.smythstoys.com/uk/en-gb/search/?text=pokemon",
+        "coord": (53.552, -1.128),
+        "radius": 25,
+        "parser": generic_parser,
+        "online": False,
+    },
+    "The Entertainer": {
+        "url": "https://www.thetoyshop.com/search/?text=pokemon",
+        "coord": (53.521, -1.120),
+        "radius": 30,
+        "parser": generic_parser,
+        "online": False,
+    },
+
+    # Online stores
+    "Amazon UK": {
+        "url": "https://www.amazon.co.uk/s?k=pokemon+tcg",
+        "parser": generic_parser,
+        "online": True,
+    },
+    "eBay UK": {
+        "url": "https://www.ebay.co.uk/sch/i.html?_nkw=pokemon+tcg",
+        "parser": generic_parser,
+        "online": True,
+    },
 }
 
 # ================= MAIN =================
 
 def run():
-    seen_items = load_seen_items()
-    updated_seen = set(seen_items)
+    seen = load_seen_items()
+    updated_seen = set(seen)
+    notifications = []
 
     for store, cfg in STORES.items():
         try:
-            # Skip stores too far away
-            if not within_distance(cfg["coord"]):
-                continue
-
-            products = cfg["parser"](cfg["url"])
-            if not products:
-                continue
-
-            new_products = []
-
-            for product in products:
-                # Check if in stock
-                if not looks_in_stock(product.get("name", "")):
+            # Distance check only for physical stores
+            if not cfg.get("online"):
+                radius = cfg.get("radius", DEFAULT_RADIUS_MILES)
+                if not within_distance(cfg["coord"], radius):
                     continue
 
-                unique_id = f"{store}:{product['name']}"
-                if unique_id not in seen_items:
-                    new_products.append(product)
-                    updated_seen.add(unique_id)
+            products = safe_parse(cfg["parser"], cfg["url"])
+            for p in products:
+                if not looks_in_stock(p["name"]):
+                    continue
 
-            if not new_products:
-                continue
+                uid = f"{store}:{p['name']}"
+                if uid in seen:
+                    continue
 
-            message = f"POKEMON RESTOCK: {store} ({USER_POSTCODE})\n\n"
-            for product in new_products[:10]:
-                message += (
-                    f"- {product['name']}\n"
-                    f"  Price: {product['price']}\n"
-                    f"  Link: {product['link']}\n\n"
-                )
-
-            send_discord(message)
+                updated_seen.add(uid)
+                notifications.append((store, p))
 
         except Exception as e:
             print(f"{store} error: {e}")
 
-    save_seen_items(updated_seen)
+    if notifications:
+        message = f"POKEMON RESTOCK ({USER_LOCATION_LABEL})\n\n"
+        for store, p in notifications[:10]:
+            message += (
+                f"{store}\n"
+                f"- {p['name']}\n"
+                f"  {p['price']}\n"
+                f"  {p['link']}\n\n"
+            )
+        send_discord(message)
 
+    save_seen_items(updated_seen)
 
 if __name__ == "__main__":
     run()
